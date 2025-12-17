@@ -45,7 +45,6 @@
             width: 240px; height: 180px;
             border: 2px solid rgba(255,0,0,0.5); 
             transform: scaleX(-1); opacity: 0.6; border-radius: 8px;
-            display :none;
         }
         
         /* Vandiep */
@@ -442,23 +441,27 @@
 
             } else if (state === 'EXPLODE') {
                 titleMesh.visible = false; starMesh.visible = false; loveMesh.visible = false;
-                const baseAngle = groupGold.rotation.y; 
-                const angleStep = (Math.PI * 2) / 5;
+                // increase base spin and add stronger hand-based influence for responsiveness
+                const handInfluence = (handX - 0.5) * 6.0; // stronger than before
+                const spinFactor = 0.75; // automatic spin speed multiplier (reduced 50%)
+                const baseAngle = groupGold.rotation.y * 2.0 + handInfluence + time * spinFactor;
+                const angleStep = (Math.PI * 2) / Math.max(photoMeshes.length, 1);
                 let bestIdx = 0; let maxZ = -999;
                 photoMeshes.forEach((mesh, i) => {
                     mesh.visible = true;
                     const angle = baseAngle + i * angleStep;
                     const x = Math.sin(angle) * CONFIG.photoOrbitRadius;
                     const z = Math.cos(angle) * CONFIG.photoOrbitRadius;
-                    const y = Math.sin(time + i) * 3; 
-                    mesh.position.lerp(new THREE.Vector3(x, y, z), 0.1);
+                    const y = Math.sin(time + i) * 3;
+                    // faster response to position changes
+                    mesh.position.lerp(new THREE.Vector3(x, y, z), 0.2);
                     mesh.lookAt(camera.position);
                     if (z > maxZ) { maxZ = z; bestIdx = i; }
-                    if (z > 5) { 
-                        const ds = 1.0 + (z/CONFIG.photoOrbitRadius)*0.8; 
-                        mesh.scale.lerp(new THREE.Vector3(ds, ds, ds), 0.1);
+                    if (z > 5) {
+                        const ds = 1.0 + (z/CONFIG.photoOrbitRadius)*0.8;
+                        mesh.scale.lerp(new THREE.Vector3(ds, ds, ds), 0.15);
                     } else {
-                        mesh.scale.lerp(new THREE.Vector3(0.6, 0.6, 0.6), 0.1);
+                        mesh.scale.lerp(new THREE.Vector3(0.6, 0.6, 0.6), 0.15);
                     }
                 });
                 selectedIndex = bestIdx;
@@ -486,12 +489,15 @@
             const video = document.getElementsByClassName('input_video')[0];
             const canvas = document.getElementById('camera-preview');
             const ctx = canvas.getContext('2d');
+            // match canvas internal size to CSS size for correct aspect (no stretching)
+            canvas.width = 240; canvas.height = 180;
             
             const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
             hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
 
             hands.onResults(results => {
-                ctx.clearRect(0,0,100,75); ctx.drawImage(results.image, 0, 0, 100, 75);
+                ctx.clearRect(0,0,canvas.width,canvas.height);
+                try { ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height); } catch(e) { /* drawing may fail if image not ready */ }
 
                 // --- Capture logic: take one photo when gesture becomes HEART (delay 0.5s) ---
                 try {
@@ -672,6 +678,4 @@
         });
     </script>
 </body>
-
 </html>
-
