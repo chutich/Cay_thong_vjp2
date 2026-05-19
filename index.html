@@ -95,25 +95,95 @@
         const photoTextures = [];
 
         async function loadPhotoFiles() {
-            const defaultFiles = ['./p1.JPG', './p2.jpg', './p3.jpeg', './p4.jpeg', './p5.jpg'];
+            const allPhotos = [];
+            
+            // Try 1: Fetch manifest.json
             try {
-                const response = await fetch('./imgs/');
-                if (!response.ok) throw new Error('Directory fetch failed');
-                const html = await response.text();
-                const thumbRegex = /href="([^"]+\.(?:jpe?g|png|gif|webp|bmp))"/gi;
-                let match;
-                while ((match = thumbRegex.exec(html)) !== null) {
-                    const candidate = match[1].trim();
-                    if (candidate && !candidate.startsWith('#') && !candidate.startsWith('http')) {
-                        const path = candidate.startsWith('./') ? candidate : `./imgs/${candidate}`;
-                        if (!photoFiles.includes(path)) photoFiles.push(path);
+                const response = await fetch('./imgs/manifest.json');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (Array.isArray(data.photos)) {
+                        allPhotos.push(...data.photos);
+                        console.log('Loaded from manifest.json:', allPhotos.length, 'photos');
                     }
                 }
             } catch (err) {
-                console.warn('Could not enumerate imgs folder, using fallback list', err);
+                console.warn('manifest.json not found');
             }
-            if (photoFiles.length === 0) photoFiles.push(...defaultFiles);
-            photoFiles.forEach((f, i) => photoTextures[i] = loader.load(f));
+            
+            // Try 2: Directory listing
+            if (allPhotos.length === 0) {
+                try {
+                    const response = await fetch('./imgs/');
+                    if (response.ok) {
+                        const html = await response.text();
+                        const fileRegex = /href="([^"]+\.(?:jpe?g|png|gif|webp|bmp))"/gi;
+                        let match;
+                        while ((match = fileRegex.exec(html)) !== null) {
+                            const candidate = match[1].trim();
+                            if (candidate && !candidate.startsWith('#') && !candidate.startsWith('http')) {
+                                let path = candidate;
+                                if (!path.startsWith('./imgs/') && !path.startsWith('/imgs/')) {
+                                    path = `./imgs/${path.replace(/^\.\//, '')}`;
+                                }
+                                if (!allPhotos.includes(path)) allPhotos.push(path);
+                            }
+                        }
+                        console.log('Found from directory listing:', allPhotos.length, 'photos');
+                    }
+                } catch (err) {
+                    console.warn('Directory listing failed');
+                }
+            }
+            
+            // Try 3: Scan for common naming pattern (p1, p2, ..., p99)
+            if (allPhotos.length === 0) {
+                console.log('Scanning for p1-p99...');
+                const extensions = ['jpg', 'JPG', 'jpeg', 'JPEG', 'png', 'PNG', 'gif', 'GIF', 'webp', 'WEBP'];
+                for (let i = 1; i <= 99; i++) {
+                    for (let ext of extensions) {
+                        const path = `./imgs/p${i}.${ext}`;
+                        const img = new Image();
+                        img.src = path;
+                        if (!allPhotos.includes(path)) {
+                            allPhotos.push(path); // Add all attempts, let texture loader handle 404
+                        }
+                    }
+                }
+                console.log('Added scan results:', allPhotos.length, 'potential paths');
+            }
+            
+            // Fallback: Use hardcoded list
+            if (allPhotos.length === 0) {
+                const defaultFiles = ['./imgs/p1.jpg', './imgs/p2.jpg', './imgs/p3.jpg', './imgs/p4.jpg', './imgs/p5.jpg'];
+                allPhotos.push(...defaultFiles);
+                console.warn('Using default fallback list');
+            }
+            
+            // Chọn ngẫu nhiên từ 5 đến 10 ảnh
+            const randomCount = Math.floor(Math.random() * 6) + 5; // 5-10
+            const selectedPhotos = [];
+            const shuffled = [...allPhotos].sort(() => Math.random() - 0.5);
+            for (let i = 0; i < Math.min(randomCount, shuffled.length); i++) {
+                selectedPhotos.push(shuffled[i]);
+            }
+            
+            photoFiles.length = 0;
+            photoFiles.push(...selectedPhotos);
+            console.log('Loading photos:', photoFiles);
+            photoFiles.forEach((f, i) => {
+                loader.load(
+                    f,
+                    (texture) => {
+                        photoTextures[i] = texture;
+                        console.log('Loaded:', f);
+                    },
+                    undefined,
+                    (error) => {
+                        console.error('Failed to load:', f, error);
+                    }
+                );
+            });
         }
 
         function createCustomTexture(type) {
@@ -296,7 +366,7 @@
             const borderMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 }); 
 
             for(let i=0; i<photoFiles.length; i++) {
-                const mat = new THREE.MeshBasicMaterial({ map: photoTextures[i], side: THREE.DoubleSide });
+                const mat = new THREE.MeshBasicMaterial({ map: null, side: THREE.DoubleSide });
                 const mesh = new THREE.Mesh(geo, mat);
                 const border = new THREE.Mesh(borderGeo, borderMat);
                 border.position.z = -0.1; 
@@ -701,6 +771,3 @@
     </script>
 </body>
 </html>
-
-
-
